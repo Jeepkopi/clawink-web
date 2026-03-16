@@ -1,1 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClawInk - Multi-Chain Token Launcher</title>
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 2rem;
+            color: white;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
+        h1 { font-size: 3rem; text-align: center; margin-bottom: 1rem; }
+        .subtitle { text-align: center; font-size: 1.2rem; opacity: 0.9; margin-bottom: 3rem; }
+        
+        .card {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(10px);
+            padding: 2rem;
+            border-radius: 20px;
+            margin-bottom: 2rem;
+        }
+        
+        .form-group { margin-bottom: 1.5rem; }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
+        input, select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 2px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1);
+            border-radius: 10px;
+            color: white;
+            font-size: 1rem;
+        }
+        input::placeholder { color: rgba(255,255,255,0.5); }
+        option { background: #764ba2; color: white; }
+        
+        button {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        button:hover { transform: translateY(-2px); }
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .status {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 10px;
+            background: rgba(255,255,255,0.1);
+            display: none;
+        }
+        .status.show { display: block; }
+        .status.success { background: rgba(76, 175, 80, 0.3); }
+        .status.error { background: rgba(244, 67, 54, 0.3); }
+        
+        .explorer-link {
+            display: inline-block;
+            margin-top: 1rem;
+            padding: 0.5rem 1rem;
+            background: rgba(255,255,255,0.2);
+            border-radius: 8px;
+            color: white;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .explorer-link:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-2px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🦞 ClawInk</h1>
+        <p class="subtitle">Multi-Chain Token Launcher</p>
+        
+        <div class="card">
+            <button id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
+            <div id="walletInfo" style="display:none; margin-top:1rem; text-align:center;">
+                <div id="address" style="font-weight:bold; margin-bottom:0.5rem;"></div>
+                <div id="balance" style="opacity:0.8;"></div>
+            </div>
+        </div>
+        
+        <div class="card" id="deployForm" style="display:none;">
+            <h2 style="margin-bottom:1.5rem;">🚀 Deploy Token</h2>
+            
+            <div class="form-group">
+                <label>Network</label>
+                <select id="network">
+                    <option value="bsc">🟡 BSC - $0.50</option>
+                    <option value="base">🔵 Base - $2-5</option>
+                    <option value="arbitrum">🔷 Arbitrum - $1-2</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label>Token Name</label>
+                <input type="text" id="tokenName" placeholder="e.g. My Awesome Token">
+            </div>
+            
+            <div class="form-group">
+                <label>Token Symbol</label>
+                <input type="text" id="tokenSymbol" placeholder="e.g. MAT" style="text-transform:uppercase;">
+            </div>
+            
+            <button id="deployBtn" onclick="deployToken()">Deploy Bonding Curve Token</button>
+            
+            <div id="status" class="status"></div>
+        </div>
+        
+        <div style="text-align:center; margin-top:2rem;">
+            <a href="explorer.html" class="explorer-link">📊 View All Tokens</a>
+        </div>
+    </div>
 
+    <script>
+        const CONTRACTS = {
+            bsc: '0x294Aa68aCC0870312Cc9B499D54a2809b8C32568',
+            base: '0x8783527A06B6f58461876E4f4857E8f35D626757',
+            arbitrum: '0x8783527A06B6f58461876E4f4857E8f35D626757'
+        };
+        
+        const NETWORKS = {
+            bsc: { 
+                chainId: '0x38', 
+                name: 'BSC Mainnet',
+                rpc: 'https://bsc-dataseed1.binance.org',
+                explorer: 'https://bscscan.com',
+                nativeCurrency: { name: 'BNB', symbol: 'BNB', decimals: 18 }
+            },
+            base: { 
+                chainId: '0x2105', 
+                name: 'Base',
+                rpc: 'https://mainnet.base.org',
+                explorer: 'https://basescan.org',
+                nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 }
+            },
+            arbitrum: { 
+                chainId: '0xa4b1', 
+                name: 'Arbitrum One',
+                rpc: 'https://arb1.arbitrum.io/rpc',
+                explorer: 'https://arbiscan.io',
+                nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 }
+            }
+        };
+        
+        const ABI = [
+            "function createToken(string memory name, string memory symbol) external returns (address)",
+            "function getTokenCount() external view returns (uint256)",
+            "event TokenCreated(address indexed token, string name, string symbol, address indexed creator)"
+        ];
+        
+        let provider, signer, userAddress;
+        
+        async function connectWallet() {
+            if (!window.ethereum) {
+                alert('Please install MetaMask or Trust Wallet!');
+                return;
+            }
+            
+            try {
+                await window.ethereum.request({ method: 'eth_requestAccounts' });
+                provider = new ethers.providers.Web3Provider(window.ethereum);
+                signer = provider.getSigner();
+                userAddress = await signer.getAddress();
+                
+                document.getElementById('connectBtn').style.display = 'none';
+                document.getElementById('walletInfo').style.display = 'block';
+                document.getElementById('address').textContent = userAddress.substring(0,6) + '...' + userAddress.substring(38);
+                
+                updateBalance();
+                
+                document.getElementById('deployForm').style.display = 'block';
+            } catch (error) {
+                showStatus('Error connecting wallet: ' + error.message, 'error');
+            }
+        }
+        
+        async function updateBalance() {
+            try {
+                const balance = await provider.getBalance(userAddress);
+                const network = await provider.getNetwork();
+                const symbol = network.chainId === 56 ? 'BNB' : 'ETH';
+                document.getElementById('balance').textContent = parseFloat(ethers.utils.formatEther(balance)).toFixed(4) + ' ' + symbol;
+            } catch (error) {
+                console.error('Error getting balance:', error);
+            }
+        }
+        
+        async function deployToken() {
+            const network = document.getElementById('network').value;
+            const name = document.getElementById('tokenName').value.trim();
+            const symbol = document.getElementById('tokenSymbol').value.trim().toUpperCase();
+            
+            if (!name || !symbol) {
+                showStatus('❌ Please fill all fields!', 'error');
+                return;
+            }
+            
+            if (symbol.length > 10) {
+                showStatus('❌ Symbol too long! Max 10 characters.', 'error');
+                return;
+            }
+            
+            const deployBtn = document.getElementById('deployBtn');
+            deployBtn.disabled = true;
+            deployBtn.textContent = 'Deploying...';
+            
+            try {
+                showStatus('🔄 Checking network...', '');
+                
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                if (chainId !== NETWORKS[network].chainId) {
+                    showStatus('🔄 Switching to ' + NETWORKS[network].name + '...', '');
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: NETWORKS[network].chainId }]
+                        });
+                    } catch (switchError) {
+                        if (switchError.code === 4902) {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: NETWORKS[network].chainId,
+                                    chainName: NETWORKS[network].name,
+                                    nativeCurrency: NETWORKS[network].nativeCurrency,
+                                    rpcUrls: [NETWORKS[network].rpc],
+                                    blockExplorerUrls: [NETWORKS[network].explorer]
+                                }]
+                            });
+                        } else {
+                            throw switchError;
+                        }
+                    }
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    signer = provider.getSigner();
+                }
+                
+                showStatus('🚀 Creating bonding curve token...', '');
+                
+                const contract = new ethers.Contract(CONTRACTS[network], ABI, signer);
+                const tx = await contract.createToken(name, symbol);
+                
+                showStatus('⏳ Waiting for confirmation (this may take 1-2 minutes)...', '');
+                const receipt = await tx.wait();
+                
+                const event = receipt.events.find(e => e.event === 'TokenCreated');
+                const tokenAddress = event.args.token;
+                
+                showStatus('✅ Token deployed successfully!', 'success');
+                
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerHTML = `
+                    <div style="font-weight:bold; margin-bottom:1rem;">✅ Token Deployed Successfully!</div>
+                    <div style="margin-bottom:0.5rem;">📍 Token Address:</div>
+                    <div style="font-family:monospace; font-size:0.9rem; word-break:break-all; margin-bottom:1rem;">${tokenAddress}</div>
+                    <div style="margin-bottom:0.5rem;">🔗 View on Explorer:</div>
+                    <a href="${NETWORKS[network].explorer}/address/${tokenAddress}" target="_blank" style="color:#4CAF50; text-decoration:underline;">${NETWORKS[network].explorer}/address/${tokenAddress}</a>
+                    <div style="margin-top:1rem;">
+                        <a href="explorer.html" target="_blank" style="color:white; text-decoration:underline;">📊 View on ClawInk Explorer</a>
+                    </div>
+                `;
+                
+                document.getElementById('tokenName').value = '';
+                document.getElementById('tokenSymbol').value = '';
+                
+            } catch (error) {
+                console.error('Deployment error:', error);
+                let errorMsg = 'Deployment failed: ';
+                if (error.code === 4001) {
+                    errorMsg += 'Transaction rejected by user';
+                } else if (error.code === -32603) {
+                    errorMsg += 'Insufficient funds for gas';
+                } else {
+                    errorMsg += error.message;
+                }
+                showStatus('❌ ' + errorMsg, 'error');
+            } finally {
+                deployBtn.disabled = false;
+                deployBtn.textContent = 'Deploy Bonding Curve Token';
+            }
+        }
+        
+        function showStatus(message, type) {
+            const status = document.getElementById('status');
+            status.innerHTML = message;
+            status.className = 'status show ' + type;
+        }
+        
+        window.ethereum?.on('chainChanged', () => {
+            window.location.reload();
+        });
+        
+        window.ethereum?.on('accountsChanged', () => {
+            window.location.reload();
+        });
+    </script>
+</body>
+  </html>
