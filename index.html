@@ -1,4 +1,3 @@
-<!-- Updated deployment v2 -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,6 +25,36 @@
             border-radius: 20px;
             margin-bottom: 2rem;
         }
+        
+        .wallet-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .wallet-btn {
+            padding: 1rem;
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 15px;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .wallet-btn:hover {
+            background: rgba(255,255,255,0.2);
+            border-color: white;
+            transform: translateY(-2px);
+        }
+        
+        .wallet-icon { font-size: 2rem; }
         
         .form-group { margin-bottom: 1.5rem; }
         label { display: block; margin-bottom: 0.5rem; font-weight: 500; }
@@ -84,6 +113,46 @@
             background: rgba(255,255,255,0.3);
             transform: translateY(-2px);
         }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.show { display: flex; }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 2rem;
+            border-radius: 20px;
+            max-width: 400px;
+            width: 90%;
+        }
+        
+        .modal-header {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        
+        .close-btn {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-top: 1rem;
+        }
     </style>
 </head>
 <body>
@@ -91,15 +160,38 @@
         <h1>🦞 ClawInk</h1>
         <p class="subtitle">Multi-Chain Token Launcher</p>
         
-        <div class="card">
-            <button id="connectBtn" onclick="connectWallet()">Connect Wallet</button>
-            <div id="walletInfo" style="display:none; margin-top:1rem; text-align:center;">
-                <div id="address" style="font-weight:bold; margin-bottom:0.5rem;"></div>
+        <div class="card" id="connectCard">
+            <div id="walletSelection">
+                <h3 style="margin-bottom:1.5rem; text-align:center;">Connect Your Wallet</h3>
+                <div class="wallet-options">
+                    <button class="wallet-btn" onclick="connectMetaMask()">
+                        <div class="wallet-icon">🦊</div>
+                        <div>MetaMask</div>
+                    </button>
+                    <button class="wallet-btn" onclick="connectTrustWallet()">
+                        <div class="wallet-icon">🛡️</div>
+                        <div>Trust Wallet</div>
+                    </button>
+                    <button class="wallet-btn" onclick="connectCoinbase()">
+                        <div class="wallet-icon">💼</div>
+                        <div>Coinbase</div>
+                    </button>
+                    <button class="wallet-btn" onclick="connectWalletConnect()">
+                        <div class="wallet-icon">🔗</div>
+                        <div>WalletConnect</div>
+                    </button>
+                </div>
+                <p style="text-align:center; opacity:0.7; font-size:0.9rem; margin-top:1rem;">
+                    Choose your preferred wallet to get started
+                </p>
+            </div>
+            
+            <div id="walletInfo" style="display:none; text-align:center;">
+                <div style="font-weight:bold; margin-bottom:1rem;">✅ Connected</div>
+                <div id="address" style="margin-bottom:0.5rem;"></div>
                 <div id="balance" style="opacity:0.8;"></div>
             </div>
-        </div>
-        
-        <div class="card" id="deployForm" style="display:none;">
+                            </div><div class="card" id="deployForm" style="display:none;">
             <h2 style="margin-bottom:1.5rem;">🚀 Deploy Token</h2>
             
             <div class="form-group">
@@ -128,6 +220,21 @@
         
         <div style="text-align:center; margin-top:2rem;">
             <a href="explorer.html" class="explorer-link">📊 View All Tokens</a>
+        </div>
+    </div>
+    
+    <div id="walletModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">Install Wallet</div>
+            <p style="margin-bottom:1rem; text-align:center;">
+                Please install a supported wallet to continue:
+            </p>
+            <ul style="margin-bottom:1rem; padding-left:1.5rem;">
+                <li>MetaMask: <a href="https://metamask.io" target="_blank" style="color:#4CAF50;">metamask.io</a></li>
+                <li>Trust Wallet: Download from app store</li>
+                <li>Coinbase Wallet: <a href="https://coinbase.com/wallet" target="_blank" style="color:#4CAF50;">coinbase.com/wallet</a></li>
+            </ul>
+            <button class="close-btn" onclick="closeModal()">Close</button>
         </div>
     </div>
 
@@ -170,19 +277,52 @@
         
         let provider, signer, userAddress;
         
-        async function connectWallet() {
-            if (!window.ethereum) {
-                alert('Please install MetaMask or Trust Wallet!');
+        function getProvider() {
+            if (window.ethereum) return window.ethereum;
+            if (window.trustwallet) return window.trustwallet;
+            if (window.coinbaseWalletExtension) return window.coinbaseWalletExtension;
+            return null;
+        }
+        
+        async function connectMetaMask() {
+            const ethereum = getProvider();
+            if (!ethereum) {
+                showModal();
                 return;
             }
-            
+            await connectWallet(ethereum, 'MetaMask');
+        }
+        
+        async function connectTrustWallet() {
+            const trustwallet = window.trustwallet || window.ethereum;
+            if (!trustwallet) {
+                alert('Please open this page in Trust Wallet DApp browser!');
+                return;
+            }
+            await connectWallet(trustwallet, 'Trust Wallet');
+        }
+        
+        async function connectCoinbase() {
+            const coinbase = window.coinbaseWalletExtension || window.ethereum;
+            if (!coinbase) {
+                showModal();
+                return;
+            }
+            await connectWallet(coinbase, 'Coinbase Wallet');
+        }
+        
+        async function connectWalletConnect() {
+            alert('WalletConnect integration coming soon! Please use MetaMask or Trust Wallet for now.');
+        }
+        
+        async function connectWallet(walletProvider, walletName) {
             try {
-                await window.ethereum.request({ method: 'eth_requestAccounts' });
-                provider = new ethers.providers.Web3Provider(window.ethereum);
+                await walletProvider.request({ method: 'eth_requestAccounts' });
+                provider = new ethers.providers.Web3Provider(walletProvider);
                 signer = provider.getSigner();
                 userAddress = await signer.getAddress();
                 
-                document.getElementById('connectBtn').style.display = 'none';
+                document.getElementById('walletSelection').style.display = 'none';
                 document.getElementById('walletInfo').style.display = 'block';
                 document.getElementById('address').textContent = userAddress.substring(0,6) + '...' + userAddress.substring(38);
                 
@@ -190,7 +330,7 @@
                 
                 document.getElementById('deployForm').style.display = 'block';
             } catch (error) {
-                showStatus('Error connecting wallet: ' + error.message, 'error');
+                alert('Error connecting to ' + walletName + ': ' + error.message);
             }
         }
         
@@ -306,13 +446,23 @@
             status.className = 'status show ' + type;
         }
         
-        window.ethereum?.on('chainChanged', () => {
-            window.location.reload();
-        });
+        function showModal() {
+            document.getElementById('walletModal').classList.add('show');
+        }
         
-        window.ethereum?.on('accountsChanged', () => {
-            window.location.reload();
-        });
+        function closeModal() {
+            document.getElementById('walletModal').classList.remove('show');
+        }
+        
+        if (getProvider()) {
+            getProvider().on('chainChanged', () => {
+                window.location.reload();
+            });
+            
+            getProvider().on('accountsChanged', () => {
+                window.location.reload();
+            });
+        }
     </script>
 </body>
-  </html>
+</html>
