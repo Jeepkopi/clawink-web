@@ -68,7 +68,12 @@
             font-size: 1rem;
         }
         input::placeholder { color: rgba(255,255,255,0.5); }
+        input[type="file"] {
+            padding: 0.5rem;
+            cursor: pointer;
+        }
         option { background: #764ba2; color: white; }
+        small { opacity: 0.7; font-size: 0.85rem; }
         
         button {
             width: 100%;
@@ -112,6 +117,19 @@
         .explorer-link:hover {
             background: rgba(255,255,255,0.3);
             transform: translateY(-2px);
+        }
+        
+        .logo-preview {
+            margin-top: 1rem;
+            text-align: center;
+            display: none;
+        }
+        
+        .logo-preview img {
+            max-width: 150px;
+            max-height: 150px;
+            border-radius: 10px;
+            border: 2px solid rgba(255,255,255,0.3);
         }
         
         .modal {
@@ -191,7 +209,7 @@
                 <div id="address" style="margin-bottom:0.5rem;"></div>
                 <div id="balance" style="opacity:0.8;"></div>
             </div>
-                            </div><div class="card" id="deployForm" style="display:none;">
+        </div><div class="card" id="deployForm" style="display:none;">
             <h2 style="margin-bottom:1.5rem;">🚀 Deploy Token</h2>
             
             <div class="form-group">
@@ -211,6 +229,16 @@
             <div class="form-group">
                 <label>Token Symbol</label>
                 <input type="text" id="tokenSymbol" placeholder="e.g. MAT" style="text-transform:uppercase;">
+            </div>
+            
+            <div class="form-group">
+                <label>Token Logo (Optional) 🎨</label>
+                <input type="file" id="tokenLogo" accept="image/png,image/jpeg,image/jpg,image/gif" onchange="previewLogo(this)">
+                <small>Recommended: Square image (PNG/JPG), max 2MB. Logo will be resized to 200x200px.</small>
+                <div id="logoPreview" class="logo-preview">
+                    <p style="margin-bottom:0.5rem; opacity:0.8;">Preview:</p>
+                    <img id="previewImage" alt="Logo preview">
+                </div>
             </div>
             
             <button id="deployBtn" onclick="deployToken()">Deploy Bonding Curve Token</button>
@@ -276,6 +304,7 @@
         ];
         
         let provider, signer, userAddress;
+        let uploadedLogoData = null;
         
         function getProvider() {
             if (window.ethereum) return window.ethereum;
@@ -345,7 +374,47 @@
             }
         }
         
-        async function deployToken() {
+        function previewLogo(input) {
+            const preview = document.getElementById('logoPreview');
+            const previewImg = document.getElementById('previewImage');
+            
+            if (input.files && input.files[0]) {
+                const file = input.files[0];
+                
+                if (file.size > 2 * 1024 * 1024) {
+                    alert('Image too large! Please choose an image under 2MB.');
+                    input.value = '';
+                    preview.style.display = 'none';
+                    return;
+                }
+                
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    const img = new Image();
+                    img.onload = function() {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = 200;
+                        canvas.height = 200;
+                        const ctx = canvas.getContext('2d');
+                        
+                        const size = Math.min(img.width, img.height);
+                        const x = (img.width - size) / 2;
+                        const y = (img.height - size) / 2;
+                        
+                        ctx.drawImage(img, x, y, size, size, 0, 0, 200, 200);
+                        
+                        uploadedLogoData = canvas.toDataURL('image/png');
+                        previewImg.src = uploadedLogoData;
+                        preview.style.display = 'block';
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.style.display = 'none';
+                uploadedLogoData = null;
+            }
+        }async function deployToken() {
             const network = document.getElementById('network').value;
             const name = document.getElementById('tokenName').value.trim();
             const symbol = document.getElementById('tokenSymbol').value.trim().toUpperCase();
@@ -367,17 +436,19 @@
             try {
                 showStatus('🔄 Checking network...', '');
                 
-                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                const walletProvider = getProvider();
+                const chainId = await walletProvider.request({ method: 'eth_chainId' });
+                
                 if (chainId !== NETWORKS[network].chainId) {
                     showStatus('🔄 Switching to ' + NETWORKS[network].name + '...', '');
                     try {
-                        await window.ethereum.request({
+                        await walletProvider.request({
                             method: 'wallet_switchEthereumChain',
                             params: [{ chainId: NETWORKS[network].chainId }]
                         });
                     } catch (switchError) {
                         if (switchError.code === 4902) {
-                            await window.ethereum.request({
+                            await walletProvider.request({
                                 method: 'wallet_addEthereumChain',
                                 params: [{
                                     chainId: NETWORKS[network].chainId,
@@ -391,7 +462,7 @@
                             throw switchError;
                         }
                     }
-                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    provider = new ethers.providers.Web3Provider(walletProvider);
                     signer = provider.getSigner();
                 }
                 
@@ -406,10 +477,25 @@
                 const event = receipt.events.find(e => e.event === 'TokenCreated');
                 const tokenAddress = event.args.token;
                 
+                if (uploadedLogoData) {
+                    showStatus('📤 Uploading logo...', '');
+                    const logoInfo = {
+                        tokenAddress: tokenAddress,
+                        network: network,
+                        logo: uploadedLogoData,
+                        timestamp: Date.now()
+                    };
+                    localStorage.setItem('token_logo_' + tokenAddress.toLowerCase(), JSON.stringify(logoInfo));
+                }
+                
                 showStatus('✅ Token deployed successfully!', 'success');
                 
                 const statusDiv = document.getElementById('status');
+                const logoHtml = uploadedLogoData ? 
+                    `<div style="text-align:center; margin-bottom:1rem;"><img src="${uploadedLogoData}" style="max-width:100px; border-radius:10px;"></div>` : '';
+                
                 statusDiv.innerHTML = `
+                    ${logoHtml}
                     <div style="font-weight:bold; margin-bottom:1rem;">✅ Token Deployed Successfully!</div>
                     <div style="margin-bottom:0.5rem;">📍 Token Address:</div>
                     <div style="font-family:monospace; font-size:0.9rem; word-break:break-all; margin-bottom:1rem;">${tokenAddress}</div>
@@ -422,6 +508,9 @@
                 
                 document.getElementById('tokenName').value = '';
                 document.getElementById('tokenSymbol').value = '';
+                document.getElementById('tokenLogo').value = '';
+                document.getElementById('logoPreview').style.display = 'none';
+                uploadedLogoData = null;
                 
             } catch (error) {
                 console.error('Deployment error:', error);
@@ -430,6 +519,8 @@
                     errorMsg += 'Transaction rejected by user';
                 } else if (error.code === -32603) {
                     errorMsg += 'Insufficient funds for gas';
+                } else if (error.message && error.message.includes('insufficient funds')) {
+                    errorMsg += 'Insufficient funds for gas. Please add more ' + (network === 'bsc' ? 'BNB' : 'ETH');
                 } else {
                     errorMsg += error.message;
                 }
